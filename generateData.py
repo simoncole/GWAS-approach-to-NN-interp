@@ -4,7 +4,7 @@ import pandas as pd
 np.random.seed(12)
 
 # Generate data for the fn
-num_training_points = 300000
+num_training_points = 10000
 a = np.random.randn(num_training_points, 1)
 b = np.random.randn(num_training_points, 1)
 
@@ -24,4 +24,4 @@ data = pd.DataFrame({
 })
 
 #for now, ok to upload to git but if the data gets too large we'll want to use env and store it locally
-# data.to_csv('./data/simpleReg.csv', index=False)
+data.to_csv('./data/simpleReg.csv', index=False)
