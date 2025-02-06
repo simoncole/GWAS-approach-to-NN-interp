@@ -95,10 +95,11 @@ def get_freeze_weight_hook(mask):
 
 
 def create_masked_network(
-    masks: list[np.ndarray],
-    itype: Literal["masked", "sparse", "static"],
+    itype: Literal["masked", "sparse", "static"] = "masked",
+    masks: list[np.ndarray] = None,
     freeze=True,
 ):
+    masks = masks or MASKS
     model: torch.Module = get_permfree_2to1_regression()
     with torch.no_grad():
         for j, mask in enumerate(masks):

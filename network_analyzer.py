@@ -143,6 +143,37 @@ class NetworkAnalyzer:
 
             if test:
                 self.__test_network__(model, test_loader, loss_fn, device)
+                
+    def __train_network_parallel__(self, model: nn.Module, train_loader: DataLoader, num_epochs: int, optimizer, loss_fn: torch.nn.Module, device):
+        """
+        Trains a network using data parallelism across multiple GPUs.
+        """
+        # Wrap model in DataParallel if multiple GPUs are available
+        if torch.cuda.device_count() > 1:
+            print(f"Using {torch.cuda.device_count()} GPUs!")
+            model = nn.DataParallel(model)
+        model = model.to(device)
+
+        for epoch in range(num_epochs):
+            model.train()
+            running_loss = 0.0
+            for batch in train_loader:
+                input, target = batch
+                # Move data to GPU(s)
+                input, target = input.to(device), target.to(device)
+                
+                optimizer.zero_grad()
+                # Forward pass will automatically distribute across GPUs when using DataParallel
+                output = model(input)
+                loss = loss_fn(output, target)
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.item()
+
+            avg_loss = running_loss / len(train_loader)
+            self.__show_loss__(epoch, avg_loss)
+            self.train_loss_history.append(avg_loss)
 
     def __check_success__(self, network: torch.nn.Module ):
         
