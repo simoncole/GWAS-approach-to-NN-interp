@@ -39,13 +39,14 @@ def train_single_network(model_architecture, train_loader, test_loader, num_epoc
             running_loss += loss.item()
         avg_loss = running_loss / len(train_loader)
         train_loss_history.append(avg_loss)
-        # print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
     
     #check for convergence
     if len(train_loss_history) >= 2:
         converged = (train_loss_history[-2] - train_loss_history[-1]) < convergence_threshold
     else:
         converged = False
+
     if not converged: print("Network did not converge.")
     if train_loss_history[-1] > success_loss: print("Network loss is too high.")
 
@@ -80,6 +81,7 @@ def parallel_train_networks(model_architecture, train_loader, test_loader,
         futures = []
         gpu_cycle = cycle(range(max_workers))
         while tasks_successful < amount_to_produce:
+            # Submit a new task only if the target isn't reached
             gpu_id = next(gpu_cycle)
             future = executor.submit(worker, tasks_submitted, gpu_id, model_architecture,
                                      train_loader, test_loader, num_epochs,
@@ -100,6 +102,12 @@ def parallel_train_networks(model_architecture, train_loader, test_loader,
                         tasks_successful += 1
                         print(f"Network {tasks_successful} succeeded (Task {task_id}).")
                     futures.remove((task_id, fut))
+                    # cancel any pending tasks if the target is reached
+                    if tasks_successful >= amount_to_produce:
+                        for _, pending_fut in futures:
+                            pending_fut.cancel()
+                        futures.clear()
+                        break
     return collected_networks
 
 def load_data():
