@@ -55,3 +55,63 @@ Have barely had any time to work on the project, but I've just been looking over
 
 ### Entry 11/29/2024
 Today I worked on the SRS and did requirement for the User Interface. I also did the Dataflow diagrams levels 0, 1 and 2.
+
+### Entry 1/14
+
+I missed the first week of class because I was in DC because of my scholarship. We barely met with John because he got a bit late, but we set up some tasks to be fully defined in the next few day and when we meet with John:
+
+- Add Main branch
+- Add all Material into branch
+- Delete/ move non - final material into another branch
+- Make Branches for testing features
+- Make a documents folder in Main
+- Move documents to documents folder
+- Any features being developed should have their own branch
+- Organize Main (We have to figure out how)
+- Maybe how John described
+- How to move from class to package
+
+### Entry 1/16
+We were supposed to meet with John, but he canceled last minute so there was not much we could do as we are still waiting for him to set up what we are going to be working on for the rest of the semester.
+
+### Entry 1/21
+Met with John today (finally). He gave us the tasks he wants to have as MVP which are pretty much the following (in order):
+
+PIP package
+VEGA
+Testing - Unit testing each function
+Joint prob
+
+Today we also agreed that I will be the scrum master this semester, and I have set up bi weekly standups to summarize what we have worked on for the past couple of days and punish those who havent done much.
+
+### Entry 1/23
+Today we decided who is going to be working on what. I will be doing Unit testing. Honestly didnt do much.
+
+### Entry 1/28
+I think we were supposed to meet with John, but it got moved. Today I mostly spoke to Akbas about how I should go about the unit testing. He told me to define the approach of how im choosing the test cases I am going to run. He also told us he wants to see some results - something we could show at the end of our project to summarize the results. I asked John and he basically said:
+- Training: The average loss of the test set (using whatever loss function the user specified, e.g. MSE)
+- Histograms: Standard Deviation and Mean. You can also provide a fitness value for the curve(s) you fitted to it.
+
+### Entry 1/30
+Today we met with john and he formally told us what were the things he wants in the project, but he mostly was talking to Simon. I spoke with John shortly about how to do unit testing, and he told me to take a look at the built-in python class Unittest and testcase. So I will be doing some research in the upcopming days
+
+### Entry 2/2
+Worked on the SRS and finished the sections we were missing. I did the social Section.
+
+### Entry 2/4
+We finished the new parts added to the SRS. Today was all about finishing the SRS and the sections about the environment, social impact... etc.
+
+### Entry 2/6
+Today I couldnt meet with the team :c
+
+### Entry 2/11
+Today I asked akbas about unit testing, and the TA told me I should really keep track of all the test cases I make and document them on the System Test Plan (whack). Not much done, just researching on how the Unittest class works.
+
+### Entry 2/13
+Couldnt make it to class today, but I got started with the unit testing. A lot harder than I thought. Using mock objects is kind of weird, just have to do some more tests. So far all im doing is white box testing. Starting to think we will need to refractor this code to have smaller methods easier to test.
+
+### Entry 2/18
+Today we didnt meet with John. I spoke with Akbas about unit testing. Not a lot done, but I did keep going and worked on some test cases before class.
+
+#### Entry 2/20
+Today we decided that I will be stopping testing for a bit. I need to refractor the code I was working on becasue there are some methods that are way too big, which makes it really hard to test. Luckily its just a couple of methods. I spoke with Leah to see if she will be able to take on the testing of the other parts of the code while I refractor the network generation code. Hopefully it wont take too long - I am aiming rto have it done by monday since it is not really that bad

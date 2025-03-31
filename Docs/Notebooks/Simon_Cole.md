@@ -129,3 +129,50 @@ torch.save(networks_state_dict, f'{output_dir}/trainedNetworks.pt')
 - I feel like with this we've accomplished the minimum viable product we set out to at the beginning of the semester.
 - Trying to get presentation things figured out
 - finished recording my part of the presentation, may have to modify after others since we didn't do it in person
+
+# 1/23/2025
+- Finally finished gaussian mixture fit code after a lot of debugging
+- kept getting issue with peaks at the beginning and end of the distribution
+- it helped to make all the fit parameters ahead of time and then use them in the fit function
+- right now it's max 3 peaks, but need to discuss with John what the optimal number is
+- Merged into develop
+
+# 1/24/2025
+- brainstormed about how to make commit history cleaner with notebooks
+- new strategy is to save outputs to directory and clear all the outputs before committing
+- implemented this strategy
+- also cleaned up git 
+
+# 1/25/2025
+- got vega environment working 
+- made conda environment for the project
+- trained a few networks on vega with the cpu just to test
+
+# 1/27/2025
+- I've been working on script to train networks on the GPU node of vega
+- run into a lot of issues with accessing the GPU and configuring
+- I've been talking with the vega sys admin
+- began workign on script for parallel training of networks on each of the GPUs
+
+# 2/3/2025
+- still running into issues with vega, the job submission system MOAB isn't working well
+
+# 2/5/2025
+- parallel training of networks on each of the GPUs is working but the networks are training slower than expected
+
+# 2/10/2025
+- modified the parallel training script and things are running faster
+- also just decreased the size of the networks
+
+# 2/12/2025
+- began training 100k networks on vega
+- run failed because I didn't make interactive session long enough
+
+# 2/13/2025
+- running into issue where the parallel training won't stop when the amount to produce is reached
+- fixed by adding new check for amount to produce
+- still trains those which are in the queue but doesn't save them
+
+
+
+
