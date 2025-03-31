@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from torchvision import datasets
 
 #2 hidden layers
 #2 inputs, 2 hidden with 5 neurons each
@@ -31,7 +34,26 @@ class SimpleNet(nn.Module):
         out = self.fc3(out)
         return out
 
-
+class MinimalMNIST(nn.Module):
+    def __init__(self):
+        super(MinimalMNIST, self).__init__()
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(28*28, 16)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(16, 16)
+        self.fc3 = nn.Linear(16, 16)
+        self.fc4 = nn.Linear(16, 10)  # 10 output classes for MNIST
+       
+    def forward(self, x):
+        x = self.flatten(x)
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        x = self.relu(x)
+        x = self.fc4(x)
+        return x
 
 data_path = './data/simpleReg.csv'
 if not os.path.exists(data_path):
@@ -45,35 +67,54 @@ y_true = data['y'].values.astype(np.float32)
 X_tensor = torch.tensor(X)
 y_tensor = torch.tensor(y_true).unsqueeze(1)
 
-networks_file = "WorkingNetworks/working_networks.pt"
+# Load MNIST test data
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.1307,), (0.3081,))
+])
+test_dataset = datasets.MNIST(root='./MNIST_data', train=False, download=False, transform=transform)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+
+networks_file = "WorkingNetworks/working_networks_mnist.pt"
 if not os.path.exists(networks_file):
     raise FileNotFoundError(f"Networks file not found at {networks_file}")
 
 networks_state_dicts = torch.load(networks_file, map_location=torch.device('cpu'))
 
-mse_list = []
-mae_list = []
-r2_list = []
-
+accuracies = []
 print("Evaluating networks on the test data:")
 for net_name, state_dict in networks_state_dicts.items():
-    model = SimpleNet()
+    model = MinimalMNIST()
     model.load_state_dict(state_dict)
     model.eval()
+    
+    correct = 0
+    total = 0
     with torch.no_grad():
-        predictions = model(X_tensor).squeeze().numpy()  # predictions shape: (N,)
-    mse = mean_squared_error(y_true, predictions)
-    mae = mean_absolute_error(y_true, predictions)
-    r2 = r2_score(y_true, predictions)
-    mse_list.append(mse)
-    mae_list.append(mae)
-    r2_list.append(r2)
-    print(f"{net_name}: MSE = {mse:.4f}, MAE = {mae:.4f}, R2 = {r2:.4f}")
+        for images, labels in test_loader:
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    
+    accuracy = 100 * correct / total
+    accuracies.append(accuracy)
+    # print(f"{net_name}: Accuracy = {accuracy:.2f}%")
 
 print("\nSummary Metrics Across Networks:")
-print(f"Average MSE: {np.mean(mse_list):.4f} ± {np.std(mse_list):.4f}")
-print(f"Average MAE: {np.mean(mae_list):.4f} ± {np.std(mae_list):.4f}")
-print(f"Average R2:  {np.mean(r2_list):.4f} ± {np.std(r2_list):.4f}")
+print(f"Average Accuracy: {np.mean(accuracies):.2f}% ± {np.std(accuracies):.2f}%")
+print(f"Best Accuracy: {np.max(accuracies):.2f}%")
+print(f"Worst Accuracy: {np.min(accuracies):.2f}%")
+
+# Create histogram of accuracies
+plt.figure(figsize=(10, 6))
+plt.hist(accuracies, bins=50, edgecolor='black')
+plt.title('Distribution of Network Accuracies')
+plt.xlabel('Accuracy (%)')
+plt.ylabel('Count')
+os.makedirs('outputs', exist_ok=True)
+plt.savefig('outputs/accuracy_distribution.png')
+plt.close()
 
 # Create a grid over the input space using the min/max of a and b from the data
 a_min, a_max = data['a'].min(), data['a'].max()
