@@ -39,7 +39,7 @@ def train_single_network(model_architecture, train_loader, test_loader, num_epoc
             running_loss += loss.item()
         avg_loss = running_loss / len(train_loader)
         train_loss_history.append(avg_loss)
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+        # print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
     
     #check for convergence
     if len(train_loss_history) >= 2:
