@@ -935,8 +935,6 @@ class WeightBinning():
         - walkthrough_strategy: Strategy for weight walkthrough, 'previous_layer_first' or 'next_layer_first' (default 'previous_layer_first')
         - start_neuron: Starting neuron for walkthrough (default 0)
         
-        Returns:
-        - cluster_indices: List of cluster indices for each layer
         """
 
         # Run interactive walkthrough if requested
@@ -964,7 +962,7 @@ class WeightBinning():
         
         # Cluster distributions
         print(f"Clustering {'GMMs' if multi_peak else 'Gaussians'} with KL threshold {kl_threshold}...")
-        cluster_indices = self.cluster_distributions(
+        self.cluster_indices = self.cluster_distributions(
             threshold=kl_threshold,
             multi_peak=multi_peak
         )
@@ -972,12 +970,11 @@ class WeightBinning():
         # Plot unique distributions
         print(f"Plotting unique {'GMM' if multi_peak else 'Gaussian'} distributions for layer {layer}...")
         self.plot_unique_distributions(
-            indices=cluster_indices,
+            indices=self.cluster_indices,
             layer=layer,
             multi_peak=multi_peak
         )        
         
-        return cluster_indices
 
     def find_fc_layers(self, network):
         """

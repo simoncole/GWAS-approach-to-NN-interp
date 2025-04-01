@@ -1,0 +1,21 @@
+{
+    "start_time": "2025-02-26T15:11:07.817997",
+    "end_time": "2025-02-27T02:41:01.841365",
+    "duration_seconds": 41394.023368,
+    "batch_size": 1024,
+    "learning_rate": 0.2,
+    "num_epochs": 5,
+    "networks_produced": 10000,
+    "success_accuracy_threshold": 0.1,
+    "digits_used": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+    ],
+    "output_file": "/home2/coles8/NN_GWAS/GWAS-approach-to-NN-interp/WorkingNetworks/subset/working_networks_subset_10000.pt"
+}

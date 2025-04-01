@@ -1,0 +1,11 @@
+{
+    "start_time": "2025-02-21T23:23:25.564399",
+    "end_time": "2025-02-22T02:17:16.482183",
+    "duration_seconds": 10430.917784,
+    "batch_size": 1024,
+    "learning_rate": 0.2,
+    "num_epochs": 5,
+    "networks_produced": 2000,
+    "success_accuracy_threshold": 0.1,
+    "output_file": "WorkingNetworks/working_networks_mnist.pt"
+}
