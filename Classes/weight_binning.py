@@ -14,7 +14,7 @@ from scipy.stats import norm
 
 class WeightBinning():
 
-    def __init__(self, architecture, save_dir, load_path, num_bins=30):
+    def __init__(self, architecture, save_dir, load_path, num_bins=30, min_weight=None, max_weight=None):
 
         # Assert that num_bins is positive
         assert num_bins > 0, "Number of bins must be positive"
@@ -26,11 +26,18 @@ class WeightBinning():
         self.save_dir = save_dir
         self.load_path = load_path
         self.architecture = architecture
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.weights_filtered = False
+        
         self.load_models()
         print("Loaded models")
         self.store_weights()
         print("Stored weights")
-        
+        all_zero_positions = self.identify_all_zero_weights()
+        for layer_idx, positions in all_zero_positions.items():
+            print(f"Layer {layer_idx} has {len(positions)} all-zero weights")
+            print(f"  Positions: {positions}")
 
 
     def __getMinOrMax__(self, networks, layerNum, getMin):
@@ -57,9 +64,11 @@ class WeightBinning():
                     fc_layer_idx += 1
         
         if getMin:
-            return min(weights) - 1e-6 #small adjustment to account for floating point error
+            # If self.min_weight is specified, use it; otherwise use the actual min
+            return self.min_weight if self.min_weight is not None else min(weights) - 1e-6
         else:
-            return max(weights) + 1e-6
+            # If self.max_weight is specified, use it; otherwise use the actual max
+            return self.max_weight if self.max_weight is not None else max(weights) + 1e-6
         
     def get_layer_weight_distributions(self):
         """
@@ -149,17 +158,36 @@ class WeightBinning():
         """
         # Initialize empty lists for each bin
         binned_networks = [[] for _ in range(self.num_bins)]
+        discarded_weights = []
         
         for net_idx, network in enumerate(network_weights_layer):
             # Select network[neuron i, incoming weight j]
             weight = network[weight_position[0]][weight_position[1]]
+            
+            # Check if weight is within range
+            if (self.min_weight is not None and weight < self.min_weight) or \
+               (self.max_weight is not None and weight > self.max_weight):
+                discarded_weights.append(weight)
+                continue
+                
+            # Find the corresponding bin
             corresponding_bin = np.digitize(weight, bin_ranges, right=False) - 1
             
-            # Check if weight is in bin range
-            assert corresponding_bin >= 0 and corresponding_bin < self.num_bins, f"Weight {weight} out of bin range at neuron {weight_position[0]}, incoming weight {weight_position[1]}"
+            # Validate bin index
+            if corresponding_bin < 0 or corresponding_bin >= self.num_bins:
+                # This shouldn't happen if bin_ranges is set up correctly
+                print(f"Warning: Weight {weight} out of bin range at neuron {weight_position[0]}, incoming weight {weight_position[1]}")
+                continue
             
             # Add network to the appropriate bin
             binned_networks[corresponding_bin].append(network)
+        
+        # Report discarded weights if any
+        if discarded_weights and not self.weights_filtered:
+            print(f"Layer {weight_position[0]}, Position {weight_position}: Discarded {len(discarded_weights)} weights outside range")
+            print(f"  Min discarded: {min(discarded_weights) if discarded_weights else 'N/A'}, Max discarded: {max(discarded_weights) if discarded_weights else 'N/A'}")
+            print(f"  Total weights kept: {sum(len(networks) for networks in binned_networks)}")
+            self.weights_filtered = True
         
         return binned_networks
     def populate_bins_single_layer(self, layer_num, layer_networks_skeleton, network_weights_layer, bin_ranges):
@@ -177,6 +205,7 @@ class WeightBinning():
         
         Notes:
         - Each bin contains a list of networks whose weights fall within that bin's range.
+        - If all weights at a position are 0, each bin at that position is set to None.
         """
         layer_networks = layer_networks_skeleton.copy()
         
@@ -184,12 +213,24 @@ class WeightBinning():
         for i in range(layer_networks.shape[0]):
             # Iterate over incoming weights to neuron
             for j in range(layer_networks.shape[1]):
-                # Bin the single weight position
-                binned_networks = self.bin_single_weight((i, j), network_weights_layer, bin_ranges)
+                # Check if all weights at this position are 0
+                all_zeros = True
+                for network in network_weights_layer:
+                    if abs(network[i][j]) > 1e-10:  # Use a small epsilon for floating point comparison
+                        all_zeros = False
+                        break
                 
-                # Store the binned networks in the layer structure
-                for bin_idx, networks in enumerate(binned_networks):
-                    layer_networks[i][j][bin_idx] = networks
+                if all_zeros:
+                    # Set all bins to None if all weights are 0, maintaining array structure
+                    for bin_idx in range(self.num_bins):
+                        layer_networks[i, j, bin_idx] = None
+                else:
+                    # Bin the single weight position as before
+                    binned_networks = self.bin_single_weight((i, j), network_weights_layer, bin_ranges)
+                    
+                    # Store the binned networks in the layer structure
+                    for bin_idx, networks in enumerate(binned_networks):
+                        layer_networks[i][j][bin_idx] = networks
         
         return layer_networks
     
@@ -237,24 +278,40 @@ class WeightBinning():
         
         Parameters:
         - layer_weight_distributions_networks: The distribution structure with networks
-          stored in bins, with shape [layers][neurons][incoming_weights][num_bins].
+        stored in bins, with shape [layers][neurons][incoming_weights][num_bins].
         
         Returns:
         - layer_weight_distributions_counts: A distribution structure with counts of networks
-          in each bin, with shape [layers][neurons][incoming_weights][num_bins].
+        in each bin, with shape [layers][neurons][incoming_weights][num_bins].
+        Positions where all weights are 0 have None values for each bin.
         """
         layer_weight_distributions_counts = []
         
         for layer in layer_weight_distributions_networks:
             layer_shape = layer.shape[:-1]  # Remove the bin dimension
-            layer_counts = np.zeros(layer_shape + (self.num_bins,), dtype=int)
+            layer_counts = np.empty(layer_shape + (self.num_bins,), dtype=object)
             
             for i in range(layer_shape[0]):
                 for j in range(layer_shape[1]):
+                    # Check if all bins are None (indicating all-zero weights)
+                    all_none = True
                     for bin_idx in range(self.num_bins):
-                        # Count networks in this bin
-                        layer_counts[i, j, bin_idx] = len(layer[i, j, bin_idx])
-            
+                        if layer[i, j, bin_idx] is not None:
+                            all_none = False
+                            break
+                    
+                    if all_none:
+                        # Keep None values for all bins if all weights are zero
+                        layer_counts[i, j] = np.array([None] * self.num_bins, dtype=object)
+                    else:
+                        counts = np.zeros(self.num_bins, dtype=int)
+                        for bin_idx in range(self.num_bins):
+                            # Count networks in this bin
+                            bin_networks = layer[i, j, bin_idx]
+                            if bin_networks is not None:
+                                counts[bin_idx] = len(bin_networks)
+                        layer_counts[i, j] = counts
+                
             layer_weight_distributions_counts.append(layer_counts)
             
         return layer_weight_distributions_counts
@@ -323,6 +380,16 @@ class WeightBinning():
         self.layer_weight_distributions_counts = self.derive_counts_from_networks(self.layer_weight_distributions_networks)
         
     def create_conditional_weight_matrix(self, layer, given_weight_position, experimental_weight_position):
+        # Check if either position has all-zero weights (all bins are None)
+        given_position = self.layer_weight_distributions_networks[layer][given_weight_position[0]][given_weight_position[1]]
+        experimental_position = self.layer_weight_distributions_networks[layer][experimental_weight_position[0]][experimental_weight_position[1]]
+        
+        given_all_none = self.is_all_zero_weight(given_position)
+        experimental_all_none = self.is_all_zero_weight(experimental_position)
+        
+        if given_all_none or experimental_all_none:
+            print(f"Warning: All-zero weights detected at one of the positions. Cannot create conditional matrix.")
+            return None
         
         # Assert that weight positions are tuples
         assert isinstance(given_weight_position, tuple), "given_weight_position must be a tuple (neuron_idx, from_weight_idx)"
@@ -335,7 +402,7 @@ class WeightBinning():
         conditional_counts_matrix = np.zeros((self.num_bins, self.num_bins))
         #for each bin in the given distribution, bin the set of networks which fall into that bin
         for given_bin_idx, given_bin in enumerate(given_distribution_networks):
-            if len(given_bin) == 0:
+            if given_bin is None or len(given_bin) == 0:
                 # No networks in this bin, create empty distribution
                 continue
             else:
@@ -459,14 +526,27 @@ class WeightBinning():
             - bin_edges: The edges of the bins for the specified layer, used to label the x-axis with actual values.
             """
             # get the bin data for the specified weight
-            weight_distribution = weight_distributions[layer][weight_position[0]][weight_position[1]][:]
+            weight_distribution = weight_distributions[layer][weight_position[0]][weight_position[1]]
 
-            num_bins = len(weight_distribution)
+            # Check if this is an all-zero weight (all bins are None)
+            if self.is_all_zero_weight(weight_distribution):
+                print(f"Cannot plot weight distribution for Layer {layer}, Position {weight_position}: All weights are zero")
+                return
+            
+            # Filter out None values for plotting
+            valid_distribution = []
+            for bin_val in weight_distribution:
+                if bin_val is None:
+                    valid_distribution.append(0)
+                else:
+                    valid_distribution.append(bin_val)
+                    
+            num_bins = len(valid_distribution)
 
             bin_labels = [f"{bin_edges[i]:.3f} - {bin_edges[i+1]:.3f}" for i in range(num_bins)]
             
             plt.figure(figsize=(10, 6))
-            plt.bar(range(num_bins), weight_distribution, width=0.8, align='center', edgecolor='black')
+            plt.bar(range(num_bins), valid_distribution, width=0.8, align='center', edgecolor='black')
             plt.xlabel('Bin Range')
             plt.ylabel('Count')
             plt.title(f'Weight Histogram for Layer {layer}, Position {weight_position}')
@@ -480,6 +560,7 @@ class WeightBinning():
         """
         Normalize the weight distributions so that each bin represents a probability.
         Creates self.normalized_distributions from self.layer_weight_distributions_counts.
+        Preserves None values for all-zero weights.
         """
         self.normalized_distributions = []
         for layer in self.layer_weight_distributions_counts:
@@ -487,12 +568,29 @@ class WeightBinning():
             for neuron in layer:
                 neuron_counts = []
                 for from_weight in neuron:
-                    #total should be num of networks
-                    total = sum(from_weight)
-                    normalized_bin_counts = [bin_count / total for bin_count in from_weight]
-                    neuron_counts.append(np.array(normalized_bin_counts))
-                layer_counts.append(np.array(neuron_counts))
-            self.normalized_distributions.append(np.array(layer_counts))
+                    # Check if all bins are None (indicating all-zero weights)
+                    all_none = True
+                    for bin_val in from_weight:
+                        if bin_val is not None:
+                            all_none = False
+                            break
+                    
+                    if all_none:
+                        # Preserve None values for all bins if all weights are zero
+                        neuron_counts.append(np.array([None] * self.num_bins, dtype=object))
+                    else:
+                        #total should be num of networks
+                        valid_counts = [bin_count for bin_count in from_weight if bin_count is not None]
+                        total = sum(valid_counts)
+                        normalized_bin_counts = []
+                        for bin_count in from_weight:
+                            if bin_count is not None:
+                                normalized_bin_counts.append(bin_count / total)
+                            else:
+                                normalized_bin_counts.append(None)
+                        neuron_counts.append(np.array(normalized_bin_counts))
+                layer_counts.append(np.array(neuron_counts, dtype=object))
+            self.normalized_distributions.append(np.array(layer_counts, dtype=object))
 
         return self.normalized_distributions
 
@@ -529,6 +627,12 @@ class WeightBinning():
 
                 for neuron_idx in range(num_neurons):
                     for from_weight_idx in range(num_from_weights):
+                        # Check if this position is an all-zero weight (all bins are None)
+                        all_none = self.is_all_zero_weight(layer_data[neuron_idx, from_weight_idx])
+                        if all_none:
+                            layer_models[neuron_idx, from_weight_idx] = None
+                            continue
+                        
                         counts = layer_data[neuron_idx, from_weight_idx, :]
                         if np.any(counts):
                             X_list = []
@@ -574,6 +678,12 @@ class WeightBinning():
 
                 for neuron_idx in range(num_neurons):
                     for from_weight_idx in range(num_from_weights):
+                        # Check if this position is an all-zero weight (all bins are None)
+                        all_none = self.is_all_zero_weight(layer_data[neuron_idx, from_weight_idx])
+                        if all_none:
+                            layer_fit_params[neuron_idx, from_weight_idx, :] = np.array([0, 0, 0])
+                            continue
+                        
                         weight_distribution = layer_data[neuron_idx, from_weight_idx, :]
                         #check for existence
                         if np.any(weight_distribution):
@@ -856,6 +966,11 @@ class WeightBinning():
         seen_cluster_indices = set()
         for i in range(layer_indices.shape[0]):
             for j in range(layer_indices.shape[1]):
+                # Skip if this is an all-zero weight (all bins are None)
+                weight_distribution = self.normalized_distributions[layer][i, j]
+                if self.is_all_zero_weight(weight_distribution):
+                    continue
+                    
                 cluster_idx = layer_indices[i, j]
                 
                 # If we haven't seen this cluster index before, plot it
@@ -1017,15 +1132,103 @@ class WeightBinning():
         # Initialize layer_bin_ranges
         layer_bin_ranges = []
         
+        # Track total filtered weights across all layers
+        total_weights = 0
+        total_filtered = 0
+        
         # Calculate bin ranges for each FC layer
         for fc_idx, _ in enumerate(fc_indices):
-            layerMin = self.__getMinOrMax__(self.networks, fc_idx, True)
-            layerMax = self.__getMinOrMax__(self.networks, fc_idx, False)
+            # Get natural min/max from the data
+            natural_min = self.__getMinOrMax__(self.networks, fc_idx, True)
+            natural_max = self.__getMinOrMax__(self.networks, fc_idx, False)
+            
+            # Count how many weights would be filtered if using custom range
+            if self.min_weight is not None or self.max_weight is not None:
+                filtered_count = 0
+                weights_count = 0
+                
+                # Collect all weights in this layer
+                for network in self.networks:
+                    if hasattr(network, "network"):
+                        net_layers = list(network.network.children())
+                    else:
+                        net_layers = list(network.children())
+                    
+                    fc_layer_idx = 0
+                    for layer in net_layers:
+                        if isinstance(layer, nn.Linear):
+                            if fc_layer_idx == fc_idx:
+                                weights = layer.weight.data.cpu().numpy().flatten()
+                                weights_count += len(weights)
+                                
+                                # Count filtered weights
+                                for w in weights:
+                                    if (self.min_weight is not None and w < self.min_weight) or \
+                                       (self.max_weight is not None and w > self.max_weight):
+                                        filtered_count += 1
+                            fc_layer_idx += 1
+                
+                total_weights += weights_count
+                total_filtered += filtered_count
+                
+                if filtered_count > 0:
+                    print(f"Layer {fc_idx}: Filtering {filtered_count}/{weights_count} weights ({filtered_count/weights_count:.2%})")
+            
+            # Use provided min/max values if specified, otherwise use natural ones
+            bin_min = self.min_weight if self.min_weight is not None else natural_min
+            bin_max = self.max_weight if self.max_weight is not None else natural_max
             
             # Calculate bin edges
-            bin_edges = np.histogram_bin_edges(a=[], bins=self.num_bins, range=(layerMin, layerMax))
+            bin_edges = np.histogram_bin_edges(a=[], bins=self.num_bins, range=(bin_min, bin_max))
             layer_bin_ranges.append(bin_edges)
         
+        # Report total filtered weights
+        if total_filtered > 0:
+            print(f"Total: Filtered {total_filtered}/{total_weights} weights ({total_filtered/total_weights:.2%})")
+        
         return layer_bin_ranges
+
+    def identify_all_zero_weights(self):
+        """
+        Identify positions in each layer where weights are zero across all networks.
+        
+        Returns:
+        - all_zero_positions: A dictionary mapping layer indices to lists of (neuron_idx, from_weight_idx) tuples
+          where all weights are zero across networks.
+        """
+        if not hasattr(self, 'layer_weight_distributions_counts'):
+            raise AttributeError("Weight distributions not available. Call store_weights() first.")
+        
+        all_zero_positions = {}
+        
+        # Iterate through each layer
+        for layer_idx, layer_data in enumerate(self.layer_weight_distributions_counts):
+            positions = []
+            
+            # Iterate over all positions in the layer
+            for neuron_idx in range(layer_data.shape[0]):
+                for from_weight_idx in range(layer_data.shape[1]):
+                    # Check if all bins at this position are None (indicating all-zero weights)
+                    all_none = self.is_all_zero_weight(layer_data[neuron_idx][from_weight_idx])
+                    if all_none:
+                        positions.append((neuron_idx, from_weight_idx))
+            
+            # Add to dictionary if any positions were found
+            if positions:
+                all_zero_positions[layer_idx] = positions
+        
+        return all_zero_positions
+
+    def is_all_zero_weight(self, distribution):
+        """
+        Check if a weight distribution contains all None values (indicating all-zero weights).
+        
+        Parameters:
+        - distribution: Array of bin values for a specific weight position
+        
+        Returns:
+        - Boolean: True if all bin values are None, False otherwise
+        """
+        return all(bin_val is None for bin_val in distribution)
 
     
